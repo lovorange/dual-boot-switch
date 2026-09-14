@@ -7,21 +7,42 @@ param([switch]$Yes)
 
 $ErrorActionPreference = 'Stop'
 
-# 1. 枚举固件启动项，找到 description 为 ubuntu 的项，取其 GUID
-$lines = bcdedit /enum firmware
+# 1. 以原始字节方式捕获 bcdedit 输出。
+#    bcdedit 输出是 UTF-16LE，若直接用 PowerShell 管道捕获，中文系统会按
+#    GBK 解码变成乱码，导致后面找不到启动项。这里绕过解码问题。
+$psi = New-Object System.Diagnostics.ProcessStartInfo
+$psi.FileName = "$env:SystemRoot\System32\bcdedit.exe"
+$psi.Arguments = '/enum firmware'
+$psi.RedirectStandardOutput = $true
+$psi.UseShellExecute = $false
+$proc = [System.Diagnostics.Process]::Start($psi)
+$ms = New-Object System.IO.MemoryStream
+$proc.StandardOutput.BaseStream.CopyTo($ms)
+$proc.WaitForExit() | Out-Null
+$lines = [System.Text.Encoding]::Unicode.GetString($ms.ToArray()) -split "`r`n"
+
+# 2. 找到 ubuntu 固件启动项：定位含 "ubuntu" 的行（不区分大小写），
+#    再向上找最近的 {GUID}。不依赖字段名是英文还是中文。
 $guid = $null
 for ($i = 0; $i -lt $lines.Count; $i++) {
-    if ($lines[$i] -match 'description\s+ubuntu') {
-        # GUID 在上一行: identifier {xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx}
-        if ($lines[$i - 1] -match '\{([0-9a-fA-F-]{36})\}') {
-            $guid = $Matches[1]
-            break
+    if ($lines[$i] -match 'ubuntu') {
+        for ($j = $i - 1; $j -ge [Math]::Max(0, $i - 8); $j--) {
+            if ($lines[$j] -match '\{([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})\}') {
+                $guid = $Matches[1]
+                break
+            }
         }
+        if ($guid) { break }
     }
 }
 
 if (-not $guid) {
-    Write-Host '[x] 未找到 ubuntu 固件启动项，请运行 bcdedit /enum firmware 检查' -ForegroundColor Red
+    # 保存原始输出，方便排查（放在脚本同目录）
+    $dump = Join-Path $PSScriptRoot 'bcdedit-dump.txt'
+    ($lines -join "`r`n") | Out-File $dump -Encoding Unicode
+    Write-Host '[x] 未找到 ubuntu 固件启动项，原始输出已保存到:' -ForegroundColor Red
+    Write-Host "    $dump" -ForegroundColor Red
+    Write-Host '    请把该文件内容发给维护者排查；临时方案：开机按 F12/Esc 进启动菜单手动选 ubuntu' -ForegroundColor Yellow
     Read-Host '按 Enter 退出'
     exit 1
 }
@@ -33,6 +54,6 @@ if (-not $Yes) {
     if ($answer -ne 'y') { Write-Host '已取消'; exit 0 }
 }
 
-# 2. 设置 BootNext（一次性生效），然后重启
+# 3. 设置 BootNext（一次性生效），然后重启
 bcdedit /set '{fwbootmgr}' bootsequence "{$guid}" | Out-Null
 shutdown /r /t 0
