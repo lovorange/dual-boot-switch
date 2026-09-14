@@ -1,0 +1,9 @@
+[Unit]
+Description=Remove one-time dual-boot flag from EFI partition
+
+[Service]
+Type=oneshot
+ExecStart=/bin/rm -f /boot/efi/bootubuntu.once
+
+[Install]
+WantedBy=multi-user.target

@@ -47,4 +47,4 @@ towin                   # 推荐：免密免确认，任意目录一键重启进
 - **重启进 Windows 后开机磁盘检查（chkdsk F: 等）**：最常见原因是 Windows **快速启动**——"关机"实为休眠，Ubuntu 期间挂载/写入过该 NTFS 分区后，Windows 恢复休眠会话时发现文件系统状态不一致。**首选修复：Windows 管理员 CMD 执行 `powercfg /h off` 关闭快速启动**（双系统环境强烈建议）。次因是 Ubuntu 侧 ntfs-3g 未干净卸载，新版 `to-windows.sh` 已自动干净卸载所有 Windows 分区并 `sync`。
   - `chkntfs /x F:` 可禁止开机检查指定盘（会掩盖真实磁盘损坏，慎用）；
   - chkdsk 倒计时"按任意键跳过"无效是 Windows 8+ 已知现象（此时 USB 键盘尚未初始化），无法补救，只能预防。
-- **Windows 切 Ubuntu 后停在 GRUB 菜单**：脚本已用一次性标记文件方案解决——`to-ubuntu.ps1` 会在 EFI 分区写入 `bootubuntu.once`，GRUB（经 `/etc/grub.d/40_custom` 配置）检测到后本次直接启动 Ubuntu。手动开机的默认项（Windows、10 秒倒计时）不受影响。
+- **Windows 切 Ubuntu 后停在 GRUB 菜单**：脚本已用一次性标记文件方案解决——`to-ubuntu.ps1` 会在 EFI 分区根目录写入 `bootubuntu.once`；GRUB 经 `/etc/grub.d/40_custom` 检测到后本次直接启动 Ubuntu（只读不删）；Ubuntu 开机后由 `bootflag-clean.service` 删除标记。两个配置文件见 `setup/` 目录。手动开机的默认项（Windows、10 秒倒计时）不受影响。
