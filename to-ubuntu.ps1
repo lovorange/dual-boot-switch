@@ -55,6 +55,25 @@ if (-not $Yes) {
     if ($answer -ne 'y') { Write-Host '已取消'; exit 0 }
 }
 
-# 3. 设置 BootNext（一次性生效），然后重启
+# 3. 在 EFI 分区写入一次性标记文件 bootubuntu.once。
+#    GRUB 检测到该文件后本次直接启动 Ubuntu（不显示菜单），
+#    从而保持手动开机时的默认项（Windows、10 秒倒计时）不变。
+$esp = $null
+foreach ($d in 'B', 'Y', 'X', 'W', 'V', 'U') {
+    if (-not (Test-Path "${d}:\")) { $esp = "${d}:"; break }
+}
+if ($esp) {
+    try {
+        mountvol $esp /S | Out-Null
+        Set-Content -Path "$esp\bootubuntu.once" -Value '1' -NoNewline
+        mountvol $esp /D | Out-Null
+    } catch {
+        Write-Host '[!] 写入一次性标记失败，将退回 GRUB 菜单方式' -ForegroundColor Yellow
+    }
+} else {
+    Write-Host '[!] 无可用盘符挂载 EFI 分区，将退回 GRUB 菜单方式' -ForegroundColor Yellow
+}
+
+# 4. 设置 BootNext（一次性生效），然后重启
 bcdedit /set '{fwbootmgr}' bootsequence "{$guid}" | Out-Null
 shutdown /r /t 0
