@@ -7,9 +7,9 @@ param([switch]$Yes)
 
 $ErrorActionPreference = 'Stop'
 
-# 1. 以原始字节方式捕获 bcdedit 输出。
-#    bcdedit 输出是 UTF-16LE，若直接用 PowerShell 管道捕获，中文系统会按
-#    GBK 解码变成乱码，导致后面找不到启动项。这里绕过解码问题。
+# 1. 以原始字节方式捕获 bcdedit 输出，再按系统 ANSI 代码页（中文系统=GBK）解码。
+#    实测 bcdedit 重定向输出是单字节 ANSI/GBK（字段名 identifier 在中文系统
+#    显示为"标识符"，description 保持英文），按 UTF-16 解码会全部乱码。
 $psi = New-Object System.Diagnostics.ProcessStartInfo
 $psi.FileName = "$env:SystemRoot\System32\bcdedit.exe"
 $psi.Arguments = '/enum firmware'
@@ -19,10 +19,11 @@ $proc = [System.Diagnostics.Process]::Start($psi)
 $ms = New-Object System.IO.MemoryStream
 $proc.StandardOutput.BaseStream.CopyTo($ms)
 $proc.WaitForExit() | Out-Null
-$lines = [System.Text.Encoding]::Unicode.GetString($ms.ToArray()) -split "`r`n"
+$lines = [System.Text.Encoding]::Default.GetString($ms.ToArray()) -split "`r`n"
 
-# 2. 找到 ubuntu 固件启动项：定位含 "ubuntu" 的行（不区分大小写），
-#    再向上找最近的 {GUID}。不依赖字段名是英文还是中文。
+# 2. 找到 ubuntu 固件启动项：定位含 "ubuntu" 的行（不区分大小写，path 或
+#    description 行都会命中），再向上找最近的 {GUID}（实测 GUID 在该行上方
+#    第 2~3 行）。不依赖字段名是英文还是中文。
 $guid = $null
 for ($i = 0; $i -lt $lines.Count; $i++) {
     if ($lines[$i] -match 'ubuntu') {
